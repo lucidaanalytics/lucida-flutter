@@ -31,7 +31,10 @@ class TracingHeaders {
 
   /// `lucida.session_id=<id>` appended to [existing] W3C baggage, replacing a stale Lucida entry.
   static String withBaggage(String? existing, String sessionId) => [
-        ...(existing ?? '').split(',').map((s) => s.trim()).where((s) => s.isNotEmpty && !s.startsWith('lucida.session_id=')),
+        ...(existing ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty && !s.startsWith('lucida.session_id=')),
         'lucida.session_id=$sessionId',
       ].join(',');
 }
