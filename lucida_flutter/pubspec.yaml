@@ -1,0 +1,21 @@
+name: lucida_flutter
+description: Thin Flutter widgets over lucida_core (provider, screen observer, replay widget tree, guide dialogs).
+version: 0.1.0
+homepage: https://github.com/lucidaanalytics/lucida-flutter
+repository: https://github.com/lucidaanalytics/lucida-flutter/tree/main/lucida_flutter
+issue_tracker: https://github.com/lucidaanalytics/lucida-flutter/issues
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  lucida_core: ^0.1.0
+  shared_preferences: ^2.2.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+dependency_overrides:
+  lucida_core:
+    path: ../lucida_core
