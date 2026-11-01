@@ -216,6 +216,9 @@ void main() {
       final h = c.tracing.headersFor('https://api.example.com/v1/x');
       expect(h['X-Lucida-Distinct-Id'], c.distinctId);
       expect(h['X-Lucida-Session-Id'], isNotEmpty);
+      expect(h['baggage'], 'lucida.session_id=${h['X-Lucida-Session-Id']}');
+      expect(c.tracing.headersFor('https://api.example.com/v1/x', baggage: 'a=1, lucida.session_id=old,b=2')['baggage'],
+          'a=1,b=2,lucida.session_id=${h['X-Lucida-Session-Id']}');
       expect(c.tracing.headersFor('https://a.corp.io/x'), isNotEmpty);
       expect(c.tracing.headersFor('https://corp.io/x'), isEmpty);
       expect(c.tracing.headersFor('https://other.com/x'), isEmpty);

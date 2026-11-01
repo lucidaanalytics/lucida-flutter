@@ -37,4 +37,4 @@ class IoHttp implements HttpPort {
 
 /// Adds `X-Lucida-*` tracing headers to an outgoing dart:io request when its host is on the allow-list.
 void addTracingHeaders(HttpClientRequest req, TracingHeaders t) =>
-    t.headersFor(req.uri.toString()).forEach(req.headers.set);
+    t.headersFor(req.uri.toString(), baggage: req.headers['baggage']?.join(',')).forEach(req.headers.set);
