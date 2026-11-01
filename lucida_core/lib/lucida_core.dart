@@ -17,6 +17,8 @@ export 'src/ports.dart';
 export 'src/queue.dart' show EventQueue, WireEvent;
 export 'src/replay.dart' show ReplayRecorder;
 export 'src/replay_policy.dart' show RemoteReplayConfig, ReplayPolicy;
+export 'src/screenshot.dart'
+    show MaskRect, ScreenshotMaskPlan, ScreenshotSource, screenshotPlan, screenshotSnapshotEvent;
 export 'src/retry.dart' show backoffDelay, isRetryable;
 export 'src/host_headers.dart' show TracingHeaders;
 export 'src/wireframe.dart'

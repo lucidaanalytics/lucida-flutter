@@ -58,7 +58,44 @@ int _clock = 1760000000000;
   return (core: core, http: http, src: src, rec: ReplayRecorder(core, src));
 }
 
+class _Shots implements ScreenshotSource {
+  final List<ScreenshotMaskPlan> plans = [];
+  String? png = 'iVBO';
+  @override
+  Future<String?> capture(ScreenshotMaskPlan plan) async {
+    plans.add(plan);
+    return png;
+  }
+}
+
 void main() {
+  test('screenshot plan paints text, inputs and sensitive nodes; masking off keeps text but never inputs', () {
+    final snap = _Source().snapshot('S')!;
+    final p = screenshotPlan(snap, mask: true);
+    expect(p.mask, [const MaskRect(10, 20, 100, 20), const MaskRect(10, 60, 200, 30)]);
+    expect(p.sensitive, [const MaskRect(10, 100, 100, 20)]);
+    final open = screenshotPlan(snap, mask: false);
+    expect(open.mask, [const MaskRect(10, 60, 200, 30)]);
+    expect(open.sensitive, isNotEmpty);
+  });
+
+  test('screenshot mode sends one masked image per changed frame and never the wireframe text', () async {
+    final t = make();
+    final shots = _Shots();
+    final rec = ReplayRecorder(t.core, t.src, maskTextContent: false, screenshots: shots);
+    await rec.tick();
+    await rec.tick(); // same image: nothing new
+    expect(t.http.chunks, hasLength(1));
+    final body = jsonEncode(t.http.chunks.single);
+    expect(body, contains('data:image/png;base64,iVBO'));
+    expect(body, isNot(contains('Hello Ann')));
+    expect(shots.plans.first.sensitive, isNotEmpty);
+    shots.png = null; // nothing drawn: nothing sent
+    t.src.label = 'changed';
+    await rec.tick();
+    expect(t.http.chunks, hasLength(1));
+  });
+
   test('sends meta, navigation and a masked full snapshot; inputs and sensitive widgets never carry text', () async {
     final t = make();
     t.rec.setScreen('Cart');

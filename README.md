@@ -45,6 +45,11 @@ MaterialApp(navigatorObservers: [LucidaScreenObserver(lucida, replay: replay)]);
 lucida.core.consent.set({'replay': true});   // replay needs its own consent
 ```
 
+Screenshot mode: wrap the app in `LucidaReplayBoundary` and pass `screenshots: FlutterScreenshots()` to `ReplayRecorder`.
+Each tick draws the boundary (`toImageSync`, same frame as the tree walk), paints text, inputs, images, obscured fields and
+`LucidaMask`/`LucidaSensitive` subtrees over on a `PictureRecorder` canvas, and only then encodes PNG
+(`test/screenshot_test.dart` checks the painted pixels). Platform views come out blank.
+
 `FlutterWidgetTree` (in `lucida_flutter`, walks `Element`/`RenderBox`; wrap secrets in `LucidaSensitive`) is **not
 compiled or tested here**: Flutter is not installed on the build host. Treat it as a reference implementation of the port and
 verify it on a device.

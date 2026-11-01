@@ -60,7 +60,11 @@ class FlutterWidgetTree implements WidgetTreeSource {
         String? pendingValue) {
       if (budget <= 0 || depth > maxDepth) return null;
       final w = e.widget;
-      final sens = sensitive || w is LucidaSensitive || w is LucidaMask || (maskPlatformViews && _isPlatformView(w));
+      final sens = sensitive ||
+          w is LucidaSensitive ||
+          w is LucidaMask ||
+          (w is EditableText && w.obscureText) || // password pixels are painted over in screenshots too
+          (maskPlatformViews && _isPlatformView(w));
       final unmask = unmasked || w is LucidaUnmask;
       final input = inInput || w is EditableText; // the value is read only via [maskAllTextInputs]
       var want = pending;

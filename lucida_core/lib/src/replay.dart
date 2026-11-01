@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'core.dart';
 import 'replay_policy.dart';
+import 'screenshot.dart';
 import 'wireframe.dart';
 
 /// Periodic wireframe recorder (LC-EXP-9). Each [tick] snapshots the widget tree through a [WidgetTreeSource]; when the
@@ -27,7 +28,8 @@ class ReplayRecorder {
       this.flagEnabled,
       this.screenAllowList = const [],
       this.screenDenyList = const [],
-      this.captureTouches = true});
+      this.captureTouches = true,
+      this.screenshots});
 
   final Core core;
   final WidgetTreeSource source;
@@ -62,6 +64,10 @@ class ReplayRecorder {
 
   /// Record tap positions (via [tap]); never what was typed.
   final bool captureTouches;
+
+  /// Screenshot mode: each tick sends one PNG with [screenshotPlan] painted over it on device (before encoding) instead
+  /// of a wireframe. The tree walk still runs: it decides what is painted over.
+  final ScreenshotSource? screenshots;
 
   Timer? _timer;
   String _screen = 'Unknown';
@@ -160,6 +166,18 @@ class ReplayRecorder {
       return; // a failing tree walk must never affect the app
     }
     if (snap == null) return;
+    String? shot;
+    final shots = screenshots;
+    if (shots != null) {
+      // Called with no await after the walk, so the pixels belong to the same frame as the plan.
+      try {
+        shot = await shots.capture(
+            screenshotPlan(snap, mask: maskTextContent, maskInputs: maskAllTextInputs, maskImages: maskAllImages));
+      } catch (_) {
+        return;
+      }
+      if (shot == null) return;
+    }
     final rotated = sid != _lastSession;
     if (rotated) {
       _seq = 0;
@@ -169,7 +187,7 @@ class ReplayRecorder {
     }
     final events = <Map<String, dynamic>>[..._touches];
     _touches.clear();
-    final fp = jsonEncode(fullSnapshotEvent(snap, mask: true, ms: 0, maskInputs: true, maskImages: true));
+    final fp = shot ?? jsonEncode(fullSnapshotEvent(snap, mask: true, ms: 0, maskInputs: true, maskImages: true));
     if (rotated || fp != _lastFp) {
       _lastFp = fp;
       final ms = core.now();
@@ -178,9 +196,14 @@ class ReplayRecorder {
         events.add(navigationEvent(snap, ms));
         _lastScreen = snap.screen;
       }
-      events.add(fullSnapshotEvent(snap,
-          mask: maskTextContent, ms: ms, maskInputs: maskAllTextInputs, maskImages: maskAllImages));
-      _lastSnap = snap;
+      events.add(shot != null
+          ? screenshotSnapshotEvent(snap, shot, ms)
+          : fullSnapshotEvent(snap,
+              mask: maskTextContent, ms: ms, maskInputs: maskAllTextInputs, maskImages: maskAllImages));
+      // Taps on a screenshot land on its body (id 3): the wireframe ids are not in that document.
+      _lastSnap = shot != null
+          ? WireSnapshot(snap.screen, snap.width, snap.height, WireNode(WireKind.view, 0, 0, snap.width, snap.height))
+          : snap;
     }
     if (events.isEmpty) return;
     final minMs = ReplayPolicy.minDurationMs(minDurationMs, _remote);
