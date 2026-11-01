@@ -121,14 +121,16 @@ class ReplayRecorder {
     _remoteLoaded = true;
     try {
       final r = await core.c.http.send('GET', '$_base/v1/config?api_key=${Uri.encodeQueryComponent(core.c.apiKey)}');
-      if (r.status >= 200 && r.status < 300) _remote = RemoteReplayConfig.parse(r.body); // unreachable: local settings stand
+      if (r.status >= 200 && r.status < 300)
+        _remote = RemoteReplayConfig.parse(r.body); // unreachable: local settings stand
     } catch (_) {}
   }
 
   /// A tap at screen point (x, y); needs replay consent and a sent snapshot. Never records what was typed.
   void tap(double x, double y) {
     final snap = _lastSnap;
-    if (!captureTouches || snap == null || _paused || !core.consent.has('analytics') || !core.consent.has('replay')) return;
+    if (!captureTouches || snap == null || _paused || !core.consent.has('analytics') || !core.consent.has('replay'))
+      return;
     if (_touches.length < 500) _touches.add(tapEvent(snap, x, y, core.now()));
   }
 
@@ -203,8 +205,8 @@ class ReplayRecorder {
       'events': events,
     });
     if (body.length > maxBytes) return;
-    final r = await core.c.http
-        .send('POST', '$_base/v1/replay?compression=gzip', body: body, headers: {'Content-Type': 'application/json'}, gzip: true);
+    final r = await core.c.http.send('POST', '$_base/v1/replay?compression=gzip',
+        body: body, headers: {'Content-Type': 'application/json'}, gzip: true);
     if (r.status >= 200 && r.status < 300) {
       _seq++;
     } else {

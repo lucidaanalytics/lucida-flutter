@@ -88,7 +88,15 @@ class GuidesService {
   static const _seenKey = 'lc_guide_seen';
   static const kinds = {'modal', 'banner', 'announcement', 'slideout', 'tour'};
   static const handled = {
-    'url', 'url_match', 'flag_key', 'sample_pct', 'devices', 'seen_guides', 'not_seen_guides', 'delay_seconds', 'goal'
+    'url',
+    'url_match',
+    'flag_key',
+    'sample_pct',
+    'devices',
+    'seen_guides',
+    'not_seen_guides',
+    'delay_seconds',
+    'goal'
   };
 
   final Core _core;
@@ -104,7 +112,8 @@ class GuidesService {
   /// Fetches the project's live guides (needs analytics consent), then re-evaluates the current screen.
   Future<void> reload() async {
     if (!config.enabled || !_core.consent.has('analytics')) return;
-    final q = 'api_key=${Uri.encodeQueryComponent(_core.c.apiKey)}&distinct_id=${Uri.encodeQueryComponent(_core.distinctId)}';
+    final q =
+        'api_key=${Uri.encodeQueryComponent(_core.c.apiKey)}&distinct_id=${Uri.encodeQueryComponent(_core.distinctId)}';
     final r = await _core.c.http.send('GET', '${_core.c.apiHost.replaceAll(RegExp(r'/+$'), '')}/v1/guides?$q');
     if (r.status < 200 || r.status >= 300) return;
     final out = <MobileGuide>[];

@@ -54,7 +54,8 @@ class Identity {
   /// Pre-identify id, sent as `anon_distinct_id` to /v1/flags so continuity flags keep their bucket (LC-FLG-34).
   String? get priorAnonId => identified && _anonLinked && _anon.isNotEmpty && _anon != _id ? _anon : null;
 
-  void _save() => _s.set('lc_identity', jsonEncode({'distinct_id': _id, 'anon_id': _anon, 'identified': identified, 'anon_linked': _anonLinked}));
+  void _save() => _s.set('lc_identity',
+      jsonEncode({'distinct_id': _id, 'anon_id': _anon, 'identified': identified, 'anon_linked': _anonLinked}));
 
   /// Returns the `$identify` props to send, or null when nothing changed. The previous id is linked as
   /// `$anon_distinct_id` only while anonymous (the gateway refuses to merge two identified persons).

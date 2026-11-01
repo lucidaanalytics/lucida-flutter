@@ -20,4 +20,14 @@ export 'src/replay_policy.dart' show RemoteReplayConfig, ReplayPolicy;
 export 'src/retry.dart' show backoffDelay, isRetryable;
 export 'src/host_headers.dart' show TracingHeaders;
 export 'src/wireframe.dart'
-    show WidgetTreeSource, WireKind, WireNode, WireSnapshot, fullSnapshotEvent, maskText, metaEvent, navigationEvent, nodeAt, tapEvent;
+    show
+        WidgetTreeSource,
+        WireKind,
+        WireNode,
+        WireSnapshot,
+        fullSnapshotEvent,
+        maskText,
+        metaEvent,
+        navigationEvent,
+        nodeAt,
+        tapEvent;
