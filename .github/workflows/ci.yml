@@ -20,6 +20,18 @@ jobs:
       - run: dart format . && git diff --exit-code
       - run: dart analyze
       - run: dart test
+  openfeature:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lucida_openfeature
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - run: dart pub get
+      - run: dart format . && git diff --exit-code
+      - run: dart analyze
+      - run: dart test
   flutter:
     runs-on: ubuntu-latest
     defaults:

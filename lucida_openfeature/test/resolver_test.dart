@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:lucida_core/lucida_core.dart';
-import 'package:lucida_openfeature/src/resolver.dart';
+import 'package:lucida_openfeature/lucida_openfeature.dart';
+import 'package:openfeature_dart_server_sdk/feature_provider.dart';
 import 'package:test/test.dart';
 
 class _Http implements HttpPort {
@@ -11,8 +12,13 @@ class _Http implements HttpPort {
   String response =
       '{"flags":{"live":{"value":"b","variant":"b","reason":"condition_match","condition_index":2}},"request_id":"r9"}';
   @override
-  Future<HttpResult> send(String method, String url,
-      {String? body, Map<String, String> headers = const {}, bool gzip = false}) async {
+  Future<HttpResult> send(
+    String method,
+    String url, {
+    String? body,
+    Map<String, String> headers = const {},
+    bool gzip = false,
+  }) async {
     if (body != null) bodies.add(body);
     return HttpResult(status, response);
   }
@@ -24,6 +30,8 @@ Lucida _lucida(_Http h, {Map<String, dynamic> fallbacks = const {}}) => Lucida(
         apiHost: 'https://ingest.test/',
         http: h,
         store: MemoryStore(),
+        libName: 'lucida-dart',
+        libVersion: '0.0.0',
         now: () => 1760000000000,
         flushAt: 100,
         flushIntervalMs: 60000,
@@ -33,10 +41,20 @@ Lucida _lucida(_Http h, {Map<String, dynamic> fallbacks = const {}}) => Lucida(
       flagOptions: FlagOptions(fallbacks: fallbacks),
     );
 
+/// \$LUCIDA_TESTDATA, else the nearest testdata/ above the working dir (monorepo and mirror layouts both work).
+File _testdata(String rel) {
+  final env = Platform.environment['LUCIDA_TESTDATA'];
+  if (env != null && env.isNotEmpty) return File('$env/$rel');
+  for (var d = Directory.current.absolute;; d = d.parent) {
+    final f = File('${d.path}/testdata/$rel');
+    if (f.existsSync()) return f;
+    if (d.parent.path == d.path) throw StateError('testdata/$rel not found');
+  }
+}
+
 void main() {
   test('reason table matches testdata/openfeature/reasons.json', () {
-    final dir = Platform.environment['LUCIDA_TESTDATA'] ?? '../../../testdata';
-    final root = jsonDecode(File('$dir/openfeature/reasons.json').readAsStringSync()) as Map;
+    final root = jsonDecode(_testdata('openfeature/reasons.json').readAsStringSync()) as Map;
     (root['reasons'] as Map).forEach((raw, v) {
       expect(openFeatureReason(raw as String, variantValue: false), (v as Map)['reason'], reason: raw);
       if (v['variant_reason'] != null) {
@@ -52,7 +70,12 @@ void main() {
     final r = LucidaResolver(l).resolve<String>('live', 'd', (v) => v is String ? v : null);
     expect(r.value, 'b');
     expect(r.reason, 'SPLIT');
-    expect(r.metadata, {'lucidaReason': 'condition_match', 'evaluatedLocally': false, 'conditionIndex': 2, 'requestId': 'r9'});
+    expect(r.metadata, {
+      'lucidaReason': 'condition_match',
+      'evaluatedLocally': false,
+      'conditionIndex': 2,
+      'requestId': 'r9',
+    });
   });
 
   test('fallback resolves with DEFAULT and no error code', () async {
@@ -74,6 +97,18 @@ void main() {
     expect(res.resolve<bool>('live', false, (v) => v is bool ? v : null).errorCode, 'TYPE_MISMATCH');
   });
 
+  test('provider reports READY and maps results onto the SDK types', () async {
+    final p = LucidaFeatureProvider(_lucida(_Http()));
+    expect(p.state, ProviderState.NOT_READY);
+    await p.initializeContext({'targetingKey': 'u1'});
+    expect(p.state, ProviderState.READY);
+    final live = await p.getStringFlag('live', 'd');
+    expect([live.value, live.variant, live.reason, live.details?['requestId']], ['b', 'b', 'SPLIT', 'r9']);
+    expect((await p.getBooleanFlag('nope', true)).errorCode, ErrorCode.FLAG_NOT_FOUND);
+    await p.shutdown();
+    expect(p.state, ProviderState.SHUTDOWN);
+  });
+
   test('context splits groups, group properties and person properties', () async {
     final h = _Http();
     final l = _lucida(h);
@@ -81,7 +116,9 @@ void main() {
       'targetingKey': 'u1',
       'plan': 'pro',
       'groups': {'org': 'acme'},
-      'groupProperties': {'org': {'size': 5}},
+      'groupProperties': {
+        'org': {'size': 5},
+      },
     });
     final req = jsonDecode(h.bodies.last) as Map;
     expect(req['person_properties'], {'plan': 'pro'});

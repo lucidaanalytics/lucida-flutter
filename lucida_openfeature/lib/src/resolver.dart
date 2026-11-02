@@ -75,7 +75,8 @@ class LucidaResolver {
     if (d == null) return Resolution(def, null, 'ERROR', 'FLAG_NOT_FOUND', 'flag $key not found', const {});
     final v = pick(d.value) ?? pick(d.payload);
     final meta = flagMetadata(d);
-    if (v == null) return Resolution(def, null, 'ERROR', 'TYPE_MISMATCH', 'flag $key is not of the requested type', meta);
+    if (v == null)
+      return Resolution(def, null, 'ERROR', 'TYPE_MISMATCH', 'flag $key is not of the requested type', meta);
     return Resolution(v, d.variant, openFeatureReason(d.reason, variantValue: d.variant != null), null, null, meta);
   }
 
