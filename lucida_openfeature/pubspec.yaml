@@ -7,9 +7,12 @@ issue_tracker: https://github.com/lucidaanalytics/lucida-flutter/issues
 environment:
   sdk: ">=3.0.0 <4.0.0"
 dependencies:
-  lucida_core:
-    path: ../lucida_core
+  lucida_core: ^0.1.0
   # Official OpenFeature Dart SDK (Apache-2.0).
   openfeature_dart_server_sdk: 0.0.15
 dev_dependencies:
   test: ^1.24.0
+
+dependency_overrides:
+  lucida_core:
+    path: ../lucida_core
