@@ -65,8 +65,10 @@ int _now = 1760000000000;
   return (core: core, http: http, src: _Source(), events: events);
 }
 
-List<Map<String, dynamic>> _named(List<WireEvent> events, String name) =>
-    [for (final e in events) if (e['event'] == name) Map<String, dynamic>.from(e['properties'] as Map)];
+List<Map<String, dynamic>> _named(List<WireEvent> events, String name) => [
+      for (final e in events)
+        if (e['event'] == name) Map<String, dynamic>.from(e['properties'] as Map)
+    ];
 
 /// RFC 8017 7.1.2 decoding (the server's side), to check the encoding is reversible.
 List<int> _oaepDecode(List<int> em) {
@@ -128,7 +130,8 @@ void main() {
     expect(e2.http.chunks.single, contains('data-lc-mask'));
 
     final e3 = env();
-    final r3 = ReplayRecorder(e3.core, e3.src, maskTextContent: false, maskScreens: ['CHECKOUT'])..setScreen('Checkout');
+    final r3 = ReplayRecorder(e3.core, e3.src, maskTextContent: false, maskScreens: ['CHECKOUT'])
+      ..setScreen('Checkout');
     await r3.tick();
     expect(e3.http.chunks.single, isNot(contains('open 42')));
   });
@@ -173,8 +176,16 @@ void main() {
     expect(swipeDirection(5, 70), 'down');
     Map<String, dynamic>? d(String s, String a, String b, double dx, double dy, int now, [int? last]) =>
         deadSwipeDecision(
-            screen: s, startScreen: 'A', startFingerprint: a, endFingerprint: b, dx: dx, dy: dy, nowMs: now, lastAt: last);
-    expect(d('A', 'x', 'x', 0, -100.4, 5000), {r'$screen_name': 'A', r'$swipe_direction': 'up', r'$swipe_distance': 100});
+            screen: s,
+            startScreen: 'A',
+            startFingerprint: a,
+            endFingerprint: b,
+            dx: dx,
+            dy: dy,
+            nowMs: now,
+            lastAt: last);
+    expect(
+        d('A', 'x', 'x', 0, -100.4, 5000), {r'$screen_name': 'A', r'$swipe_direction': 'up', r'$swipe_distance': 100});
     expect(d('A', 'x', 'x', 30, 30, 0), isNull, reason: 'under 48');
     expect(d('A', 'x', 'y', 100, 0, 0), isNull, reason: 'content moved');
     expect(d('B', 'x', 'x', 100, 0, 0), isNull, reason: 'navigated');
@@ -243,7 +254,13 @@ void main() {
     });
     final rec = ReplayRecorder(e.core, e.src)..setScreen('Pay');
     final client = Lucida(
-        CoreConfig(apiKey: 'lc_pk_x', apiHost: 'https://ingest.test/', http: e.http, store: MemoryStore(), libName: 'lucida-dart', libVersion: '0.1.0'),
+        CoreConfig(
+            apiKey: 'lc_pk_x',
+            apiHost: 'https://ingest.test/',
+            http: e.http,
+            store: MemoryStore(),
+            libName: 'lucida-dart',
+            libVersion: '0.1.0'),
         appVersion: '1');
     expect(client.captureSensitive('card', '4111'), isFalse, reason: 'no recorder attached');
     expect(rec.captureSensitive('card', '4111'), isFalse, reason: 'remote config not loaded yet');

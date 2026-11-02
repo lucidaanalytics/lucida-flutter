@@ -160,8 +160,7 @@ class ReplayRecorder {
     _patterns = compilePatterns([...maskTextPatterns, ...?_remote?.maskTextPatterns]);
   }
 
-  bool _screenMasked(String screen) =>
-      ReplayPolicy.screenMasked(screen, [...maskScreens, ...?_remote?.maskScreens]);
+  bool _screenMasked(String screen) => ReplayPolicy.screenMasked(screen, [...maskScreens, ...?_remote?.maskScreens]);
 
   bool get _touchesRecording =>
       _lastSnap != null && !_paused && core.consent.has('analytics') && core.consent.has('replay');

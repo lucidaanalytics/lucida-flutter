@@ -158,7 +158,7 @@ class Flags {
       if (x is Map) {
         v[k as String] = x['value'] ?? x['variant'] ?? (x['enabled'] == true);
         if (x['payload'] != null) p[k] = x['payload'];
-        _meta[k as String] = FlagMeta(x['reason'] as String? ?? '', (x['condition_index'] as num?)?.toInt() ?? -1, false);
+        _meta[k] = FlagMeta(x['reason'] as String? ?? '', (x['condition_index'] as num?)?.toInt() ?? -1, false);
       } else {
         v[k as String] = x;
       }
@@ -174,16 +174,20 @@ class Flags {
   /// [FlagOptions.fallbacks] with reason `fallback` (no event); null when it has no fallback either.
   FlagDetails? getFeatureFlagDetails(String key) {
     if (!_values.containsKey(key)) {
-      return options.fallbacks.containsKey(key) ? FlagDetails(options.fallbacks[key], null, null, 'fallback', -1, null, false) : null;
+      return options.fallbacks.containsKey(key)
+          ? FlagDetails(options.fallbacks[key], null, null, 'fallback', -1, null, false)
+          : null;
     }
     final v = get(key);
     final m = _meta[key];
-    return FlagDetails(v, _payloads[key], v is String ? v : null, m?.reason ?? '', m?.conditionIndex ?? -1, requestId, m?.local ?? false);
+    return FlagDetails(v, _payloads[key], v is String ? v : null, m?.reason ?? '', m?.conditionIndex ?? -1, requestId,
+        m?.local ?? false);
   }
 
   /// false | true | variant key. Emits `$feature_flag_called` once per key/value; fallbacks emit nothing.
   Object? get(String key) {
-    if (!_values.containsKey(key)) return options.fallbacks[key] ?? false;
+    // a configured fallback is served silently; a missing flag without one still reports `false`
+    if (!_values.containsKey(key) && options.fallbacks[key] != null) return options.fallbacks[key];
     final v = _values[key] ?? false;
     if (options.sendFeatureFlagEvent && !_called.contains('$key=$v')) {
       _called.add('$key=$v');

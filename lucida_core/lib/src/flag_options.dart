@@ -33,7 +33,8 @@ class FlagOptions {
 
 /// Why a flag read returned what it did; [reason] is the raw Lucida reason (`condition_match`, `kill_switch`, `fallback`, ...).
 class FlagDetails {
-  const FlagDetails(this.value, this.payload, this.variant, this.reason, this.conditionIndex, this.requestId, this.evaluatedLocally);
+  const FlagDetails(
+      this.value, this.payload, this.variant, this.reason, this.conditionIndex, this.requestId, this.evaluatedLocally);
   final Object? value;
   final Object? payload;
   final String? variant;

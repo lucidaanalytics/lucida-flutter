@@ -45,7 +45,10 @@ class GuideRules {
   static Json merged(Json state, Map<String, List<int>> views) {
     final stored = <String, dynamic>{...?(state[viewsKey] as Map?)?.cast<String, dynamic>()};
     views.forEach((id, v) {
-      final old = [for (final t in (stored[id] as List?) ?? const []) if (t is num) t.toInt()];
+      final old = [
+        for (final t in (stored[id] as List?) ?? const [])
+          if (t is num) t.toInt()
+      ];
       final all = {...old, ...v}.toList()..sort();
       stored[id] = all.length > maxViews ? all.sublist(all.length - maxViews) : all;
     });

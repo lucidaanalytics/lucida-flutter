@@ -30,11 +30,28 @@ void main() {
     expect(GuideRules.scheduleOk({'end': '2026-11-01T12:00:00.000Z'}, now), isFalse);
     expect(GuideRules.scheduleOk({'start': '2026-11-01T11:00:00+00:00'}, now), isTrue);
     final local = now.toLocal();
-    expect(GuideRules.scheduleOk({'days': [local.weekday % 7]}, now), isTrue);
-    expect(GuideRules.scheduleOk({'days': [(local.weekday + 1) % 7]}, now), isFalse);
-    expect(GuideRules.scheduleOk({'hours': {'from': local.hour, 'to': local.hour + 1}}, now), isTrue);
+    expect(
+        GuideRules.scheduleOk({
+          'days': [local.weekday % 7]
+        }, now),
+        isTrue);
+    expect(
+        GuideRules.scheduleOk({
+          'days': [(local.weekday + 1) % 7]
+        }, now),
+        isFalse);
+    expect(
+        GuideRules.scheduleOk({
+          'hours': {'from': local.hour, 'to': local.hour + 1}
+        }, now),
+        isTrue);
     // A zone-pinned recurrence was decided by the gateway.
-    expect(GuideRules.scheduleOk({'days': [(local.weekday + 1) % 7], 'timezone': 'Asia/Tokyo'}, now), isTrue);
+    expect(
+        GuideRules.scheduleOk({
+          'days': [(local.weekday + 1) % 7],
+          'timezone': 'Asia/Tokyo'
+        }, now),
+        isTrue);
     expect(GuideRules.scheduleOk(null, now), isTrue);
   });
 

@@ -16,8 +16,15 @@ class _Http implements HttpPort {
 
 Core _core(MemoryStore store, List<String> names) {
   final c = Core(CoreConfig(
-      apiKey: 'k', apiHost: 'https://h.test/', http: _Http([200]), store: store, libName: 'lucida-dart', libVersion: '0.1.0',
-      now: () => 1760000000000, flushAt: 100, random: () => 0));
+      apiKey: 'k',
+      apiHost: 'https://h.test/',
+      http: _Http([200]),
+      store: store,
+      libName: 'lucida-dart',
+      libVersion: '0.1.0',
+      now: () => 1760000000000,
+      flushAt: 100,
+      random: () => 0));
   c.onCaptured((e) => names.add(e['event'] as String));
   return c;
 }
