@@ -1,0 +1,15 @@
+name: lucida_openfeature
+description: OpenFeature provider for the Lucida Dart/Flutter SDK (static context, synchronous reads).
+version: 0.1.0
+homepage: https://github.com/lucidaanalytics/lucida-flutter
+repository: https://github.com/lucidaanalytics/lucida-flutter/tree/main/lucida_openfeature
+issue_tracker: https://github.com/lucidaanalytics/lucida-flutter/issues
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  lucida_core:
+    path: ../lucida_core
+  # Official OpenFeature Dart SDK (Apache-2.0).
+  openfeature_dart_server_sdk: 0.0.15
+dev_dependencies:
+  test: ^1.24.0

@@ -46,6 +46,9 @@ class Flags {
   Map<String, dynamic> _values = {};
   Map<String, dynamic> _payloads = {};
   Map<String, dynamic> _local = {};
+  final Map<String, FlagMeta> _meta = {};
+  final List<void Function(FlagsStatus)> _statusListeners = [];
+  bool _loaded = false;
   String? requestId;
   int _seq = 0;
 
@@ -75,10 +78,24 @@ class Flags {
     return reload ? this.reload() : Future.value();
   }
 
+  /// `changed` after each successful reload, `stale` when a reload fails after a success, `error` when none has succeeded yet.
+  void onFlagsStatus(void Function(FlagsStatus) fn) => _statusListeners.add(fn);
+
+  void _fail() {
+    final s = _loaded ? FlagsStatus.stale : FlagsStatus.error;
+    for (final l in List.of(_statusListeners)) {
+      l(s);
+    }
+  }
+
   void _notify() {
+    _loaded = true;
     final snapshot = all;
     for (final l in _listeners) {
       l(snapshot);
+    }
+    for (final l in List.of(_statusListeners)) {
+      l(FlagsStatus.changed);
     }
   }
 
@@ -103,6 +120,7 @@ class Flags {
       } else {
         v[k] = r['value'];
         if (r['payload'] != null) p[k] = r['payload'];
+        _meta[k] = FlagMeta(r['reason'] as String? ?? '', (r['condition_index'] as num?)?.toInt() ?? -1, true);
       }
     });
     _local = v;
@@ -126,14 +144,21 @@ class Flags {
           if (options.evaluationContexts.isNotEmpty) 'evaluation_contexts': options.evaluationContexts,
         }),
         headers: {'Content-Type': 'application/json'});
-    if (mine != _seq || r.status < 200 || r.status >= 300) return;
-    final j = jsonDecode(r.body) as Json;
+    if (mine != _seq) return;
+    Json? j;
+    if (r.status >= 200 && r.status < 300) {
+      try {
+        j = jsonDecode(r.body) as Json;
+      } catch (_) {/* treated as a failed load */}
+    }
+    if (j == null) return _fail();
     final v = <String, dynamic>{};
     final p = <String, dynamic>{};
     (j['flags'] as Map? ?? {}).forEach((k, x) {
       if (x is Map) {
         v[k as String] = x['value'] ?? x['variant'] ?? (x['enabled'] == true);
         if (x['payload'] != null) p[k] = x['payload'];
+        _meta[k as String] = FlagMeta(x['reason'] as String? ?? '', (x['condition_index'] as num?)?.toInt() ?? -1, false);
       } else {
         v[k as String] = x;
       }
@@ -145,8 +170,20 @@ class Flags {
     _notify();
   }
 
-  /// false | true | variant key. Emits `$feature_flag_called` once per key/value.
+  /// Value, payload, variant, raw Lucida reason and request id. A key with no value is served from
+  /// [FlagOptions.fallbacks] with reason `fallback` (no event); null when it has no fallback either.
+  FlagDetails? getFeatureFlagDetails(String key) {
+    if (!_values.containsKey(key)) {
+      return options.fallbacks.containsKey(key) ? FlagDetails(options.fallbacks[key], null, null, 'fallback', -1, null, false) : null;
+    }
+    final v = get(key);
+    final m = _meta[key];
+    return FlagDetails(v, _payloads[key], v is String ? v : null, m?.reason ?? '', m?.conditionIndex ?? -1, requestId, m?.local ?? false);
+  }
+
+  /// false | true | variant key. Emits `$feature_flag_called` once per key/value; fallbacks emit nothing.
   Object? get(String key) {
+    if (!_values.containsKey(key)) return options.fallbacks[key] ?? false;
     final v = _values[key] ?? false;
     if (options.sendFeatureFlagEvent && !_called.contains('$key=$v')) {
       _called.add('$key=$v');

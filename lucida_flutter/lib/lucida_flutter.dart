@@ -3,6 +3,7 @@ library;
 
 export 'src/autocapture_widget.dart' show LucidaAutocapture, LucidaMark;
 export 'src/guide_presenter.dart' show DialogGuidePresenter;
+export 'src/native_install.dart' show createLucida, nativeInstallSource;
 export 'src/prefs_store.dart' show PrefsStore;
 export 'src/provider.dart' show LucidaProvider;
 export 'src/screen_observer.dart' show LucidaScreenObserver;

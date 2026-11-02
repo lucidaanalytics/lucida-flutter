@@ -15,6 +15,14 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.lucida.flutter
+        pluginClass: LucidaFlutterPlugin
+      ios:
+        pluginClass: LucidaFlutterPlugin
 
 dependency_overrides:
   lucida_core:

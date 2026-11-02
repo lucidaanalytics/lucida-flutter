@@ -12,7 +12,7 @@ Two packages:
 
 ```dart
 final store = PrefsStore(await SharedPreferences.getInstance());
-final lucida = Lucida(
+final lucida = createLucida(
   CoreConfig(apiKey: 'lc_pk_...', apiHost: 'https://ingest.example.com',
       http: IoHttp(), store: store, libName: 'lucida-flutter', libVersion: '0.1.0',
       consentMode: ConsentMode.optIn),
@@ -30,6 +30,17 @@ lucida.optIn();
 Same as `sdks/android/README.md` and `sdks/browser/README.md`: `POST /v1/batch?compression=gzip`
 `{api_key, batch, sent_at}`, UUIDv7 event `uuid`, at-least-once (events stay in the persisted queue until a 2xx),
 opt-in mode stores nothing before `optIn()`, `$screen` / `$app_*` / `$feature_flag_called` events.
+
+## Install attribution
+
+Build the client with `createLucida(...)` (from `lucida_flutter`, same arguments as `Lucida(...)`) and the first-open
+`$app_installed` carries install attribution by default; `installAttribution: false` opts out. (`lucida_core`'s plain
+`Lucida(...)` stays injectable: pass `installSource: nativeInstallSource()` yourself.) Android: Play Install Referrer
+(`$install_store=google_play`, `$install_referrer`, `$install_referrer_click_ts`, `$install_begin_ts`, parsed `$utm_*`
+and click ids). iOS: the AdServices token is read natively and POSTed (text/plain, 10 s timeout, 404 retried) to Apple;
+props `$install_store=app_store`, `$install_adservices_attribution`, `$utm_*`, `$asa_*`. Any failure sends the event with
+`$install_store` only (or nothing extra without the plugin). The Android plugin depends on
+`com.android.installreferrer:installreferrer` (Apache-2.0). Pure-Dart parsers: `installReferrerProps`, `appStoreInstallProps`.
 
 ## Session replay (wireframe)
 
@@ -53,6 +64,27 @@ Each tick draws the boundary (`toImageSync`, same frame as the tree walk), paint
 `FlutterWidgetTree` (in `lucida_flutter`, walks `Element`/`RenderBox`; wrap secrets in `LucidaSensitive`) is **not
 compiled or tested here**: Flutter is not installed on the build host. Treat it as a reference implementation of the port and
 verify it on a device.
+
+### Session replay: privacy additions
+
+Every remote value below arrives in `GET /v1/config` and only ever adds masking to what the app configured.
+
+- **Masked screens** (P-M17): `ReplayRecorder(..., maskScreens: ['Checkout', 'Pay*'])` plus the project's
+  `replay_mask_screens` (case-insensitive, `*` = any run of characters, whole screen name). On a matching screen every text,
+  input value and image is masked whatever `maskTextContent` / `maskAllTextInputs` / `maskAllImages` or `LucidaUnmask` say;
+  screenshots paint them all over.
+- **Text patterns** (P-M46): `maskTextPatterns: [r'\d{4,}']` plus `replay_mask_text_patterns` (regular expressions; one that
+  does not compile is ignored). Matches in any text the wireframe would show become `*` (whitespace kept); in screenshot mode a
+  node whose text matches is painted over.
+- **`$dead_swipe`** (P-M46, `captureDeadSwipes: true` by default, fed by `LucidaTouchCapture`): a swipe of 48 logical px or more
+  after which the widget tree is unchanged ~700 ms later. Properties: `$screen_name`, `$swipe_direction`
+  (`left|right|up|down`), `$swipe_distance`. Never text or widget content; at most one per 2 s.
+- **Controlled exposure** (P-L12): when the project sends `replay_exposure_fields` and `replay_exposure_key`, set
+  `lucida.replay = replay` and call `lucida.captureSensitive('card_number', value)` for a listed field (your
+  `ValueKey<String>` value). The value is RSA-OAEP-SHA256 encrypted on device (pure Dart, `BigInt.modPow`) and sent as
+  `$sensitive_capture` (`$exposure_field`, `$exposure_kid`, `$exposure_ciphertext`, `$screen_name`, `$exposure_truncated`
+  when cut to 190 bytes). Only an audited reveal on the server can read it. Never call it for an obscured field; identical
+  values are sent once per session; nothing is persisted. There is no automatic capture in Flutter.
 
 ## Hooks, person profiles, flags, privacy
 
@@ -83,6 +115,22 @@ timeout is `IoHttp(timeout:)`) and the `Lucida(...)` facade (`flagOptions`, `aut
   (pass the same value to `ReplayRecorder`); obscured fields and `LucidaMask` subtrees stay empty.
 
 Not built: push registration (needs a scope decision). `lucida_flutter` has `flutter test` coverage (`cd sdks/flutter/lucida_flutter && flutter test`).
+
+## In-app guides
+
+Kinds `modal`, `banner`, `announcement`, `slideout`, `tour`, `carousel` (Back / Next with a slide pager) and, with an
+anchoring presenter, `tooltip` / `hotspot`. A step's `native_id` anchors it to a native view by the `ValueKey<String>` of a widget (`DialogGuidePresenter` implements `AnchoredGuidePresenter` through the navigator overlay): the bubble is drawn next
+to the view and follows it on scroll and relayout; a hotspot is a pulsing dot that opens the step. When the view does not
+appear within `wait_ms` (default 3 s, max 15 s) the SDK sends `$guide_target_missing {step_id, selector}` and shows the step
+unanchored; a view gone for 2 s closes the step. The resolved `appearance` tokens (background, text, accent, radius,
+font) apply, with `appearance.dark.tokens` when `theme_mode` is dark, or auto and the device is dark.
+
+## Fallbacks and flag details
+
+`FlagOptions(fallbacks: {'new_nav': false})` serves that value, reason `fallback`, when a flag has no value (missing, failed
+load, cold start); fallback reads emit no `$feature_flag_called`. `lucida.flags.getFeatureFlagDetails('key')` returns `FlagDetails`
+(value, payload, variant, raw `reason`, `conditionIndex`, `requestId`, `evaluatedLocally`), or null for an unknown key without a
+fallback. `lucida.flags.onFlagsStatus` reports `changed` / `stale` / `error`. OpenFeature: see `lucida_openfeature/`.
 
 ## Gaps
 

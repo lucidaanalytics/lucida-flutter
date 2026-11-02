@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'core.dart';
 import 'replay_policy.dart';
 import 'screenshot.dart';
+import 'dead_swipe.dart';
+import 'replay_masking.dart';
+import 'sensitive_capture.dart';
 import 'wireframe.dart';
 
 /// Periodic wireframe recorder (LC-EXP-9). Each [tick] snapshots the widget tree through a [WidgetTreeSource]; when the
@@ -29,7 +32,12 @@ class ReplayRecorder {
       this.screenAllowList = const [],
       this.screenDenyList = const [],
       this.captureTouches = true,
-      this.screenshots});
+      this.screenshots,
+      this.maskScreens = const [],
+      this.maskTextPatterns = const [],
+      this.captureDeadSwipes = true,
+      this.deadSwipeSettleDelay = deadSwipeSettle})
+      : _patterns = compilePatterns(maskTextPatterns);
 
   final Core core;
   final WidgetTreeSource source;
@@ -68,6 +76,25 @@ class ReplayRecorder {
   /// Screenshot mode: each tick sends one PNG with [screenshotPlan] painted over it on device (before encoding) instead
   /// of a wireframe. The tree walk still runs: it decides what is painted over.
   final ScreenshotSource? screenshots;
+
+  /// P-M17: screen-name patterns (`*` = any run of characters, case-insensitive, whole name) whose snapshots mask all
+  /// text, input values and images whatever [LucidaUnmask] says. Union with the project's `replay_mask_screens`.
+  final List<String> maskScreens;
+
+  /// P-M46: regular expressions whose matches are starred in any text replay would show (screenshots paint the node).
+  /// Union with the project's `replay_mask_text_patterns`; a pattern that does not compile is ignored.
+  final List<String> maskTextPatterns;
+
+  /// P-M46: `$dead_swipe` when a swipe of 48 logical px or more changed nothing (fed by `LucidaTouchCapture`).
+  final bool captureDeadSwipes;
+
+  /// How long after a swipe the screen must still look the same; tests shorten it.
+  final Duration deadSwipeSettleDelay;
+
+  List<RegExp> _patterns;
+  final _sensitive = SensitiveCapture();
+  ({String screen, String fp})? _swipeStart;
+  int? _lastDeadSwipeAt;
 
   Timer? _timer;
   String _screen = 'Unknown';
@@ -130,6 +157,71 @@ class ReplayRecorder {
       if (r.status >= 200 && r.status < 300)
         _remote = RemoteReplayConfig.parse(r.body); // unreachable: local settings stand
     } catch (_) {}
+    _patterns = compilePatterns([...maskTextPatterns, ...?_remote?.maskTextPatterns]);
+  }
+
+  bool _screenMasked(String screen) =>
+      ReplayPolicy.screenMasked(screen, [...maskScreens, ...?_remote?.maskScreens]);
+
+  bool get _touchesRecording =>
+      _lastSnap != null && !_paused && core.consent.has('analytics') && core.consent.has('replay');
+
+  String _fingerprint(WireSnapshot s) =>
+      jsonEncode(fullSnapshotEvent(s, mask: true, ms: 0, maskInputs: true, maskImages: true));
+
+  /// P-L12: encrypts a listed field's value and captures `$sensitive_capture` (analytics + replay consent and the project
+  /// key required). Identical values are sent once per session; nothing is sent when encryption fails. Returns whether
+  /// an event was captured.
+  bool captureSensitive(String field, String value) {
+    final r = _remote, key = _remote?.exposureKey;
+    if (value.isEmpty || r == null || key == null || !r.exposureFields.contains(field)) return false;
+    if (!core.consent.has('analytics') || !core.consent.has('replay')) return false;
+    final p = _sensitive.properties(field, value, _screen, key, core.session.touch());
+    if (p == null) return false;
+    core.capture('\$sensitive_capture', p);
+    return true;
+  }
+
+  /// P-M46: a swipe passed the touch slop (before the content moved): remember the structure it started on.
+  void swipeBegan() {
+    if (!captureDeadSwipes || !_touchesRecording) return;
+    try {
+      final s = source.snapshot(_screen);
+      _swipeStart = s == null ? null : (screen: _screen, fp: _fingerprint(s));
+    } catch (_) {
+      _swipeStart = null;
+    }
+  }
+
+  /// P-M46: the swipe ended (`dx`, `dy` = end - start); an unchanged structure on the same screen after
+  /// [deadSwipeSettleDelay] is a `$dead_swipe` (at most one per 2 s). Returns whether one was captured.
+  Future<bool> swipeEnded(double dx, double dy) async {
+    final start = _swipeStart;
+    _swipeStart = null;
+    if (start == null || dx * dx + dy * dy < deadSwipeMinDistance * deadSwipeMinDistance) return false;
+    await Future<void>.delayed(deadSwipeSettleDelay);
+    if (!_touchesRecording) return false;
+    final WireSnapshot? end;
+    try {
+      end = source.snapshot(_screen);
+    } catch (_) {
+      return false;
+    }
+    if (end == null) return false;
+    final now = core.now();
+    final p = deadSwipeDecision(
+        screen: _screen,
+        startScreen: start.screen,
+        startFingerprint: start.fp,
+        endFingerprint: _fingerprint(end),
+        dx: dx,
+        dy: dy,
+        nowMs: now,
+        lastAt: _lastDeadSwipeAt);
+    if (p == null) return false;
+    _lastDeadSwipeAt = now;
+    core.capture('\$dead_swipe', p);
+    return true;
   }
 
   /// A tap at screen point (x, y); needs replay consent and a sent snapshot. Never records what was typed.
@@ -159,20 +251,23 @@ class ReplayRecorder {
       _touches.clear();
       return;
     }
-    final WireSnapshot? snap;
+    final WireSnapshot? raw;
     try {
-      snap = source.snapshot(_screen);
+      raw = source.snapshot(_screen);
     } catch (_) {
       return; // a failing tree walk must never affect the app
     }
-    if (snap == null) return;
-    String? shot;
+    if (raw == null) return;
     final shots = screenshots;
+    // A masked screen (P-M17) forces every switch on and ignores unmask markers; patterns (P-M46) star matches.
+    final masked = _screenMasked(_screen);
+    final snap = applyPrivacy(raw, maskScreen: masked, patterns: _patterns, screenshot: shots != null);
+    final maskT = masked || maskTextContent, maskI = masked || maskAllTextInputs, maskImg = masked || maskAllImages;
+    String? shot;
     if (shots != null) {
       // Called with no await after the walk, so the pixels belong to the same frame as the plan.
       try {
-        shot = await shots.capture(
-            screenshotPlan(snap, mask: maskTextContent, maskInputs: maskAllTextInputs, maskImages: maskAllImages));
+        shot = await shots.capture(screenshotPlan(snap, mask: maskT, maskInputs: maskI, maskImages: maskImg));
       } catch (_) {
         return;
       }
@@ -198,8 +293,7 @@ class ReplayRecorder {
       }
       events.add(shot != null
           ? screenshotSnapshotEvent(snap, shot, ms)
-          : fullSnapshotEvent(snap,
-              mask: maskTextContent, ms: ms, maskInputs: maskAllTextInputs, maskImages: maskAllImages));
+          : fullSnapshotEvent(snap, mask: maskT, ms: ms, maskInputs: maskI, maskImages: maskImg));
       // Taps on a screenshot land on its body (id 3): the wireframe ids are not in that document.
       _lastSnap = shot != null
           ? WireSnapshot(snap.screen, snap.width, snap.height, WireNode(WireKind.view, 0, 0, snap.width, snap.height))

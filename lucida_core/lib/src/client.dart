@@ -5,7 +5,9 @@ import 'flag_options.dart';
 import 'flags.dart';
 import 'guides.dart';
 import 'lifecycle.dart';
+import 'replay.dart';
 import 'host_headers.dart';
+import 'install_attribution.dart';
 
 /// Facade: one object a host app holds. Wires core + flags + lifecycle.
 class Lucida {
@@ -16,12 +18,13 @@ class Lucida {
       Map<String, dynamic> deviceProperties = const {},
       GuidesConfig? guides,
       this.flagOptions = const FlagOptions(),
-      AutocaptureConfig autocaptureConfig = const AutocaptureConfig()})
+      AutocaptureConfig autocaptureConfig = const AutocaptureConfig(),
+      InstallSource? installSource})
       : core = Core(config) {
     flags = Flags(core,
         definitions: flagDefinitions, deviceProperties: deviceProperties, appVersion: appVersion, options: flagOptions);
     autocapture = Autocapture(core, autocaptureConfig);
-    lifecycle = Lifecycle(core, version: appVersion, build: appBuild);
+    lifecycle = Lifecycle(core, version: appVersion, build: appBuild, installSource: installSource);
     this.guides = GuidesService(core, guides ?? GuidesConfig(), (k) => flags.isEnabled(k));
   }
 
@@ -31,6 +34,14 @@ class Lucida {
   late final Flags flags;
   late final Lifecycle lifecycle;
   late final GuidesService guides;
+
+  /// The replay recorder built for this client (`ReplayRecorder(lucida.core, ...)`); [captureSensitive] goes through it.
+  ReplayRecorder? replay;
+
+  /// Controlled exposure (P-L12): sends [value] RSA-encrypted with the project key as `$sensitive_capture`, only when
+  /// [field] is listed in the project's exposure fields, the key is present, analytics + replay consent is held and
+  /// [replay] is set. Only an audited reveal on the server can read it; identical values are sent once per session.
+  bool captureSensitive(String field, String value) => replay?.captureSensitive(field, value) ?? false;
 
   /// Emit launch lifecycle events and load flags.
   Future<void> start() async {
