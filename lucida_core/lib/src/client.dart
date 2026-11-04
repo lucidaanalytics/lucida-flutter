@@ -106,5 +106,6 @@ class Lucida {
     replay?.clearSpool();
     core.optOut();
   }
+
   Future<void> flush() => core.flush();
 }

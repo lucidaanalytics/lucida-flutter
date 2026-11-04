@@ -56,7 +56,10 @@ class ReplayRecorder {
   void _spoolDropped(String sid, int chunks, int bytes) {
     core.debugLog('replay spool over budget: dropped session $sid ($chunks chunks, $bytes bytes)');
     core.c.onDrop?.call([
-      {'event': '\$replay_session_dropped', 'properties': {'session_id': sid, 'chunks': chunks, 'bytes': bytes}}
+      {
+        'event': '\$replay_session_dropped',
+        'properties': {'session_id': sid, 'chunks': chunks, 'bytes': bytes}
+      }
     ], 'replay_spool_full');
   }
 

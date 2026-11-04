@@ -51,8 +51,11 @@ class ReplaySpool {
 
   void _save() => _items.isEmpty
       ? _store.remove(_key)
-      : _store.set(_key,
-          jsonEncode([for (final c in _items) {'id': c.id, 'sid': c.sid, 'seq': c.seq, 'held': c.held, 'n': c.bytes}]));
+      : _store.set(
+          _key,
+          jsonEncode([
+            for (final c in _items) {'id': c.id, 'sid': c.sid, 'seq': c.seq, 'held': c.held, 'n': c.bytes}
+          ]));
 
   void add(String sid, int seq, bool held, String body) {
     final c = SpooledChunk(_nextId++, sid, seq, held, utf8.encode(body).length);

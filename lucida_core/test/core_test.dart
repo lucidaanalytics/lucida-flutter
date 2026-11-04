@@ -124,7 +124,11 @@ void main() {
     expect(again.core.queue.size, 120);
     t.store.set('lc_queue.1', 'torn');
     expect(make(store: t.store, flushAt: 1000).core.queue.size, 70); // only the torn segment is lost
-    t.store.set('lc_queue', jsonEncode([{'uuid': 'u1', 'event': 'old', 'distinct_id': 'd', 'properties': {}}]));
+    t.store.set(
+        'lc_queue',
+        jsonEncode([
+          {'uuid': 'u1', 'event': 'old', 'distinct_id': 'd', 'properties': {}}
+        ]));
     expect(make(store: t.store, flushAt: 1000).core.queue.size, 1); // the pre-segment layout migrates
     expect(t.store.get('lc_queue'), '{"segs":1}');
   });
