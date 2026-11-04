@@ -114,7 +114,7 @@ class Core {
       store: c.queueCipher == null
           ? c.store
           : EncryptedStore(c.store, c.queueCipher!,
-              {'lc_queue'}), // raw: events only reach the queue after consent, and a revoke must really delete it
+              {'lc_queue'}, ['lc_queue.']), // raw: events only reach the queue after consent, and a revoke must really delete it
       now: now,
       flushAt: c.flushAt,
       flushIntervalMs: c.flushIntervalMs,

@@ -8,7 +8,8 @@ typedef WireEvent = Map<String, dynamic>;
 
 /// Persistent batching queue: flush at N events or T ms, retry with backoff, drop-oldest when full.
 /// Items are mirrored to [store] so a killed app resumes where it left off.
-/// shortcut: rewrites the whole JSON list on every enqueue (O(n), n <= maxQueueSize); switch to an append log if profiling says so.
+/// Storage layout: `lc_queue` is the index ({"segs": n}), `lc_queue.<i>` holds segment i (up to [segmentSize] events).
+/// An enqueue rewrites only the last segment; a settled batch or a drop of the oldest re-segments from the head.
 class EventQueue {
   EventQueue({
     required this.http,
@@ -26,15 +27,36 @@ class EventQueue {
     this.random,
     this.onDrop,
   }) {
+    _load();
+  }
+
+  void _load() {
     final raw = store.get(_key);
-    if (raw != null) {
-      try {
-        _items.addAll((jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e as Map)));
-      } catch (_) {/* corrupt queue file: start empty */}
-    }
+    if (raw == null) return;
+    List<WireEvent> events(String json) =>
+        (jsonDecode(json) as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    try {
+      final d = jsonDecode(raw);
+      if (d is List) {
+        // the pre-segment layout: one JSON list under lc_queue
+        _items.addAll(events(raw));
+        _persistAll();
+        return;
+      }
+      final n = (d as Map)['segs'] as int;
+      for (var i = 0; i < n; i++) {
+        final seg = store.get('$_key.$i');
+        if (seg == null) continue;
+        try {
+          _items.addAll(events(seg));
+        } catch (_) {/* a torn segment loses only itself */}
+      }
+      _segs = n;
+    } catch (_) {/* corrupt index: start empty */}
   }
 
   static const _key = 'lc_queue';
+  static const segmentSize = 50;
   final HttpPort http;
   final String url;
   final String apiKey;
@@ -59,7 +81,33 @@ class EventQueue {
 
   int get size => _items.length;
 
-  void _persist() => _items.isEmpty ? store.remove(_key) : store.set(_key, jsonEncode(_items));
+  int _segs = 0; // segments currently in the store
+
+  int get _segCount => (_items.length + segmentSize - 1) ~/ segmentSize;
+
+  /// Rewrites every segment from the head (after items left the front), and drops stale ones.
+  void _persistAll() {
+    final n = _segCount;
+    for (var i = 0; i < n; i++) {
+      final end = (i + 1) * segmentSize;
+      store.set('$_key.$i', jsonEncode(_items.sublist(i * segmentSize, end < _items.length ? end : _items.length)));
+    }
+    for (var i = n; i < _segs; i++) {
+      store.remove('$_key.$i');
+    }
+    _segs = n;
+    n == 0 ? store.remove(_key) : store.set(_key, jsonEncode({'segs': n}));
+  }
+
+  /// After an append only the last segment changed.
+  void _persistTail() {
+    final n = _segCount;
+    store.set('$_key.${n - 1}', jsonEncode(_items.sublist((n - 1) * segmentSize)));
+    if (n != _segs) {
+      _segs = n;
+      store.set(_key, jsonEncode({'segs': n}));
+    }
+  }
 
   void enqueue(WireEvent e) {
     if (_closed) return;
@@ -67,8 +115,10 @@ class EventQueue {
     if (_items.length > maxQueueSize) {
       onDrop?.call(_items.sublist(0, _items.length - maxQueueSize), 'queue_full');
       _items.removeRange(0, _items.length - maxQueueSize);
+      _persistAll();
+    } else {
+      _persistTail();
     }
-    _persist();
     if (_items.length >= flushAt) {
       flush();
     } else {
@@ -114,7 +164,7 @@ class EventQueue {
   void _settle(List<WireEvent> batch, int status) {
     if (status >= 200 && status < 300) {
       _items.removeRange(0, batch.length.clamp(0, _items.length));
-      _persist();
+      _persistAll();
       _attempt = 0;
       if (_items.length >= flushAt) {
         flush();
@@ -125,7 +175,7 @@ class EventQueue {
     }
     if (!isRetryable(status) || _attempt >= maxRetries) {
       _items.removeRange(0, batch.length.clamp(0, _items.length));
-      _persist();
+      _persistAll();
       onDrop?.call(batch, 'status_$status');
       _attempt = 0;
       return;
@@ -136,7 +186,7 @@ class EventQueue {
   /// Discard everything (consent revoked).
   void clear() {
     _items.clear();
-    store.remove(_key);
+    _persistAll();
     _disarm();
   }
 

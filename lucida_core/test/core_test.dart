@@ -112,6 +112,23 @@ void main() {
     expect(t.http.bodies, isNotEmpty);
   });
 
+  test('the stored queue is segmented: an enqueue touches one segment, a restart resumes all', () async {
+    final t = make(flushAt: 1000);
+    for (var i = 0; i < 120; i++) {
+      t.core.capture('e$i');
+    }
+    expect(t.store.get('lc_queue'), '{"segs":3}');
+    expect(t.store.get('lc_queue.2'), isNotNull);
+    expect(t.store.get('lc_queue.3'), isNull);
+    final again = make(store: t.store, flushAt: 1000);
+    expect(again.core.queue.size, 120);
+    t.store.set('lc_queue.1', 'torn');
+    expect(make(store: t.store, flushAt: 1000).core.queue.size, 70); // only the torn segment is lost
+    t.store.set('lc_queue', jsonEncode([{'uuid': 'u1', 'event': 'old', 'distinct_id': 'd', 'properties': {}}]));
+    expect(make(store: t.store, flushAt: 1000).core.queue.size, 1); // the pre-segment layout migrates
+    expect(t.store.get('lc_queue'), '{"segs":1}');
+  });
+
   test('opt-out wipes queue and stops capture', () async {
     final t = make(flushAt: 100);
     t.core.capture('a');

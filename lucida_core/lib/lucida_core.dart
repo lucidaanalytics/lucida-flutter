@@ -29,6 +29,7 @@ export 'src/ports.dart';
 export 'src/queue.dart' show EventQueue, WireEvent;
 export 'src/dead_swipe.dart' show deadSwipeDecision, deadSwipeMinDistance, swipeDirection;
 export 'src/replay.dart' show ReplayRecorder;
+export 'src/replay_spool.dart' show ReplaySpool, SpooledChunk;
 export 'src/replay_masking.dart' show applyPrivacy, compilePatterns, maskPatterns;
 export 'src/replay_policy.dart' show ExposureKey, RemoteReplayConfig, ReplayPolicy;
 export 'src/rsa_oaep.dart' show rsaOaepEncrypt;

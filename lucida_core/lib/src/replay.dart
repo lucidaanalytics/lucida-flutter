@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'core.dart';
+import 'encrypted_store.dart';
 import 'replay_policy.dart';
+import 'replay_spool.dart';
+import 'retry.dart';
 import 'screenshot.dart';
 import 'dead_swipe.dart';
 import 'replay_masking.dart';
@@ -36,8 +39,29 @@ class ReplayRecorder {
       this.maskScreens = const [],
       this.maskTextPatterns = const [],
       this.captureDeadSwipes = true,
-      this.deadSwipeSettleDelay = deadSwipeSettle})
-      : _patterns = compilePatterns(maskTextPatterns);
+      this.deadSwipeSettleDelay = deadSwipeSettle,
+      this.spoolBudgetBytes = 10 * 1024 * 1024})
+      : _patterns = compilePatterns(maskTextPatterns) {
+    final cipher = core.c.queueCipher;
+    _spool = ReplaySpool(
+        cipher == null ? core.c.store : EncryptedStore(core.c.store, cipher, {'lc_replay'}, ['lc_replay.']),
+        budgetBytes: spoolBudgetBytes,
+        onDrop: _spoolDropped);
+  }
+
+  /// Disk budget for chunks that wait (min duration, offline, upload backoff); over it the oldest whole session is dropped.
+  final int spoolBudgetBytes;
+  late final ReplaySpool _spool;
+
+  void _spoolDropped(String sid, int chunks, int bytes) {
+    core.debugLog('replay spool over budget: dropped session $sid ($chunks chunks, $bytes bytes)');
+    core.c.onDrop?.call([
+      {'event': '\$replay_session_dropped', 'properties': {'session_id': sid, 'chunks': chunks, 'bytes': bytes}}
+    ], 'replay_spool_full');
+  }
+
+  /// Erase every spilled chunk (opt-out, reset).
+  void clearSpool() => _spool.clear();
 
   final Core core;
   final WidgetTreeSource source;
@@ -106,8 +130,6 @@ class ReplayRecorder {
   RemoteReplayConfig? _remote;
   bool _remoteLoaded = false;
   int _sessionStart = 0;
-  final List<List<Map<String, dynamic>>> _held = [];
-  static const _maxHeld = 20; // shortcut: bounded memory, oldest chunks beyond this are dropped
   WireSnapshot? _lastSnap;
   final List<Map<String, dynamic>> _touches = [];
 
@@ -144,7 +166,10 @@ class ReplayRecorder {
   void stop() {
     _timer?.cancel();
     _timer = null;
-    _held.clear(); // the session ends before it reached the minimum duration
+    // The session ends before it reached the minimum duration: held chunks never went out, so their seq numbers come
+    // back and the stream stays gapless. Pending uploads stay.
+    final gone = _spool.removeHeld().where((c) => c.sid == _lastSession).map((c) => c.seq);
+    if (gone.isNotEmpty) _seq = gone.reduce((a, b) => a < b ? a : b);
   }
 
   String get _base => core.c.apiHost.replaceAll(RegExp(r'/+$'), '');
@@ -237,7 +262,7 @@ class ReplayRecorder {
       _lastFp = null; // revoking drops state so a re-grant starts clean
       _lastSnap = null;
       _touches.clear();
-      _held.clear();
+      _spool.clear();
       return;
     }
     await _loadRemote();
@@ -277,7 +302,8 @@ class ReplayRecorder {
       _seq = 0;
       _lastSession = sid;
       _sessionStart = core.now();
-      _held.clear(); // a session cut short is dropped
+      _spool.removeHeld(exceptSid: sid); // a session cut short is dropped
+      _seq = _spool.nextSeq(sid); // resume after a restart inside the same session
     }
     final events = <Map<String, dynamic>>[..._touches];
     _touches.clear();
@@ -298,35 +324,44 @@ class ReplayRecorder {
           ? WireSnapshot(snap.screen, snap.width, snap.height, WireNode(WireKind.view, 0, 0, snap.width, snap.height))
           : snap;
     }
-    if (events.isEmpty) return;
     final minMs = ReplayPolicy.minDurationMs(minDurationMs, _remote);
-    if (minMs > 0 && core.now() - _sessionStart < minMs) {
-      _held.add(events);
-      if (_held.length > _maxHeld) _held.removeAt(0);
-      return;
+    final holding = minMs > 0 && core.now() - _sessionStart < minMs;
+    if (events.isNotEmpty) {
+      final body = jsonEncode({'session_id': sid, 'window_id': core.session.windowId, 'seq': _seq++, 'events': events});
+      if (body.length <= maxBytes) _spool.add(sid, _seq - 1, holding, body);
     }
-    final backlog = List.of(_held);
-    _held.clear();
-    for (final chunk in [...backlog, events]) {
-      await _send(chunk, sid);
-    }
+    if (holding) return;
+    _spool.release(sid);
+    await _drain();
   }
 
-  Future<void> _send(List<Map<String, dynamic>> events, String sid) async {
-    final body = jsonEncode({
-      'api_key': core.c.apiKey,
-      'session_id': sid,
-      'window_id': core.session.windowId,
-      'seq': _seq,
-      'events': events,
-    });
-    if (body.length > maxBytes) return;
-    final r = await core.c.http.send('POST', '$_base/v1/replay?compression=gzip',
-        body: body, headers: {'Content-Type': 'application/json'}, gzip: true);
-    if (r.status >= 200 && r.status < 300) {
-      _seq++;
-    } else {
-      _lastFp = null; // retry as a fresh snapshot next tick
+  /// Uploads spilled chunks in order; stops at the first retryable failure (next tick is the backoff).
+  Future<void> _drain() async {
+    for (final c in _spool.entries) {
+      if (c.held) continue;
+      final body = _spool.read(c);
+      if (body == null) {
+        _spool.remove(c);
+        continue;
+      }
+      final payload = jsonEncode({'api_key': core.c.apiKey, ...(jsonDecode(body) as Map<String, dynamic>)});
+      int status;
+      try {
+        status = (await core.c.http.send('POST', '$_base/v1/replay?compression=gzip',
+                body: payload, headers: {'Content-Type': 'application/json'}, gzip: true))
+            .status;
+      } catch (_) {
+        status = 0;
+      }
+      if (status >= 200 && status < 300) {
+        _spool.remove(c);
+      } else if (isRetryable(status)) {
+        _lastFp = null; // a fresh snapshot after the outage
+        return;
+      } else {
+        _spool.remove(c); // rejected for good (4xx): retrying cannot help
+        core.debugLog('replay chunk rejected with $status; dropped');
+      }
     }
   }
 }

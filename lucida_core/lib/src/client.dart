@@ -92,6 +92,7 @@ class Lucida {
   TracingHeaders get tracing => core.tracing;
   void group(String type, String key, [Map<String, dynamic>? props]) => core.group(type, key, props);
   void reset() {
+    replay?.clearSpool();
     core.reset();
     _reloadAll();
   }
@@ -101,6 +102,9 @@ class Lucida {
     _reloadAll();
   }
 
-  void optOut() => core.optOut();
+  void optOut() {
+    replay?.clearSpool();
+    core.optOut();
+  }
   Future<void> flush() => core.flush();
 }

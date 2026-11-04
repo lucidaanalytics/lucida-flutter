@@ -203,7 +203,7 @@ void main() {
       final store = MemoryStore();
       final c = _core(cipher: _Rev(), store: store);
       c.capture('secret-event');
-      final raw = store.get('lc_queue')!;
+      final raw = store.get('lc_queue.0')!;
       expect(raw, startsWith('enc:'));
       expect(raw, isNot(contains('secret-event')));
       expect(_core(cipher: _Rev(), store: store).queue.size, 1);
