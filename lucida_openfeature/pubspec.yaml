@@ -12,7 +12,3 @@ dependencies:
   openfeature_dart_server_sdk: 0.0.15
 dev_dependencies:
   test: ^1.24.0
-
-dependency_overrides:
-  lucida_core:
-    path: ../lucida_core
