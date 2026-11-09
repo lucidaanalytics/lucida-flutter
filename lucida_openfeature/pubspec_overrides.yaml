@@ -1,0 +1,4 @@
+# Local development: use the sibling package. Not used by pub.dev consumers.
+dependency_overrides:
+  lucida_core:
+    path: ../lucida_core
