@@ -43,5 +43,5 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter analyze
+      - run: flutter analyze --no-fatal-infos # new stable deprecates package:flutter/material.dart (info-level)
       - run: flutter test
